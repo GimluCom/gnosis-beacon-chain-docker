@@ -1,0 +1,177 @@
+version: '3.8'
+services:
+  nethermind:
+    container_name: nethermind
+    image: nethermind/nethermind:latest
+    restart: unless-stopped
+    environment:
+      NETHERMIND_CONFIG: xdai
+      NETHERMIND_JSONRPCCONFIG_ENABLED: "true"
+      NETHERMIND_JSONRPCCONFIG_HOST: "0.0.0.0"
+    volumes:
+      - ../data/nethermind/data/logs:/nethermind/logs
+      - ../data/nethermind/data/keystore:/nethermind/keystore
+      - ../data/nethermind/data/nethermind_db:/nethermind/nethermind_db
+    ports:
+      - "30303:30303"
+      - "30303:30303/udp"
+      - "127.0.0.1:8545:8545"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "10"
+  openethereum:
+    container_name: openethereum
+    image: openethereum/openethereum:latest
+    profiles: ["openethereum", "oe-backup"]
+    user: root
+    entrypoint: ["/root/openethereum-entrypoint.sh"]
+    command:
+      --chain=xdai
+      --base-path=/root/data
+      --port=30304
+      --max-peers=100
+      --metrics
+      --metrics-port=6060
+      --jsonrpc-port=8545
+      --jsonrpc-cors=all
+      --jsonrpc-interface=all
+      --jsonrpc-hosts=all
+      --jsonrpc-apis=web3,eth,net,parity
+      --logging="engine=trace,miner=trace"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "(curl -sf --connect-timeout 1 --max-time 2 --retry 2 --retry-delay 3 --retry-max-time 15 http://localhost:6060/metrics >/dev/null && curl -sf --connect-timeout 1 --max-time 2 --retry 2 --retry-delay 3 --retry-max-time 15 -X POST -H 'Content-Type: application/json' --data '{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"id\":1}' http://localhost:8545/ >/dev/null) || sh -c 'pkill -15 openethereum && (sleep 10; pkill -9 openethereum) ; return 1'"]
+      interval: 60s
+      timeout: 30s
+      start_period: 60s
+    volumes:
+      - ../data/openethereum/data:/root/data
+      - ../data/openethereum/password:/root/password
+      - ../data/openethereum/key:/root/data/keys/xdai/key
+      - type: bind
+        source: ../data/openethereum/openethereum-entrypoint.sh
+        target: /root/openethereum-entrypoint.sh
+    ports:
+      - "30304:30304"
+      - "30304:30304/udp"
+      - "127.0.0.1:8535:8545"
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "10"
+  node:
+    image: ghcr.io/gnosischain/gbc-prysm-beacon-chain
+    restart: always
+#    entrypoint: ["/root/prysm-entrypoint.sh"]
+    command: |
+      --accept-terms-of-use
+      --contract-deployment-block $DEPLOYMENT_BLOCK
+      --http-web3provider $XDAI_RPC_URL
+      --fallback-web3provider ${FALLBACK_XDAI_RPC_URL:-http://openethereum:8545}
+      --fallback-web3provider ${FALLBACK_XDAI_RPC_URL_2:-http://gnosischain:8545}
+      --fallback-web3provider ${FALLBACK_XDAI_RPC_URL_3:-http://gnosischain:8545}
+      --bootstrap-node /root/sbc/config/bootnodes.yaml
+      --config-file /root/sbc/config/config.yml
+      --chain-config-file /root/sbc/config/config.yml
+      --rpc-host 0.0.0.0
+      --grpc-gateway-host 0.0.0.0
+      --p2p-local-ip 0.0.0.0
+      --p2p-max-peers $TARGET_PEERS
+      --monitoring-host 0.0.0.0
+      --verbosity $LOG_LEVEL
+    ports:
+      - '12000:12000/udp'
+      - '13000:13000'
+      - '127.0.0.1:4000:4000'
+      - '127.0.0.1:3500:3500'
+      - '127.0.0.1:8080:8080'
+    volumes:
+      - ./config:/root/sbc/config
+      - ./node_db:/home/.eth2/beaconchaindata
+      - type: bind
+        source: ./openethereum-entrypoint.sh
+        target: /root/openethereum-entrypoint.sh
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"
+  validator-import:
+    image: ghcr.io/gnosischain/gbc-prysm-validator
+    command: |
+      accounts import
+      --accept-terms-of-use
+      --keys-dir /root/sbc/keys/validator_keys
+      --account-password-file /root/sbc/keys/keystore_password.txt
+      --wallet-password-file /root/sbc/keys/wallet_password.txt
+    volumes:
+      - ./keys:/root/sbc/keys
+      - ./wallet:/home/.eth2validators/prysm-wallet-v2
+  validator-list:
+    image: ghcr.io/gnosischain/gbc-prysm-validator
+    command: |
+      accounts list
+      --accept-terms-of-use
+      --wallet-password-file /root/sbc/keys/wallet_password.txt
+    volumes:
+      - ./keys:/root/sbc/keys
+      - ./wallet:/home/.eth2validators/prysm-wallet-v2
+  validator:
+    image: ghcr.io/gnosischain/gbc-prysm-validator
+    restart: always
+    command: |
+      --accept-terms-of-use
+      --config-file /root/sbc/config/config.yml
+      --chain-config-file /root/sbc/config/config.yml
+      --wallet-password-file /root/sbc/keys/wallet_password.txt
+      --graffiti-file=/root/sbc/config/graffiti.yml
+      --beacon-rpc-provider node:4000
+      --enable-doppelganger
+      --enable-slashing-protection-history-pruning
+    volumes:
+      - ./config:/root/sbc/config
+      - ./keys:/root/sbc/keys
+      - ./wallet:/home/.eth2validators/prysm-wallet-v2
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"
+  validator-import-slashing-protection:
+    image: ghcr.io/gnosischain/gbc-prysm-validator
+    command: |
+      slashing-protection-history import
+      --accept-terms-of-use
+      --datadir /home/.eth2validators/prysm-wallet-v2
+      --slashing-protection-json-file /root/sbc/config/slashing_protection.json
+    volumes:
+      - ./config:/root/sbc/config
+      - ./wallet:/home/.eth2validators/prysm-wallet-v2/direct
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"
+  validator-export-slashing-protection:
+    image: ghcr.io/gnosischain/gbc-prysm-validator
+    command: |
+      slashing-protection-history export
+      --accept-terms-of-use
+      --datadir /home/.eth2validators/prysm-wallet-v2/direct
+      --slashing-protection-export-dir /root/sbc/config
+    volumes:
+      - ./config:/root/sbc/config
+      - ./wallet:/home/.eth2validators/prysm-wallet-v2
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"
+networks:
+  default:
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: 1450

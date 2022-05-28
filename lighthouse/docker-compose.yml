@@ -1,0 +1,267 @@
+version: '3.8'
+services:
+  nethermind:
+    container_name: nethermind
+    image: nethermind/nethermind:latest
+    restart: unless-stopped
+    environment:
+      NETHERMIND_CONFIG: xdai
+      NETHERMIND_JSONRPCCONFIG_ENABLED: "true"
+      NETHERMIND_JSONRPCCONFIG_HOST: "0.0.0.0"
+    volumes:
+      - ../data/nethermind/data/logs:/nethermind/logs
+      - ../data/nethermind/data/keystore:/nethermind/keystore
+      - ../data/nethermind/data/nethermind_db:/nethermind/nethermind_db
+    ports:
+      - "30303:30303"
+      - "30303:30303/udp"
+      - "127.0.0.1:8545:8545"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "10"
+  openethereum:
+    container_name: openethereum
+    image: openethereum/openethereum:latest
+    profiles: ["openethereum", "oe-backup"]
+    user: root
+    entrypoint: ["/root/openethereum-entrypoint.sh"]
+    command:
+      --chain=xdai
+      --base-path=/root/data
+      --port=30304
+      --max-peers=100
+      --metrics
+      --metrics-port=6060
+      --jsonrpc-port=8545
+      --jsonrpc-cors=all
+      --jsonrpc-interface=all
+      --jsonrpc-hosts=all
+      --jsonrpc-apis=web3,eth,net,parity
+      --logging="engine=trace,miner=trace"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "(curl -sf --connect-timeout 1 --max-time 2 --retry 2 --retry-delay 3 --retry-max-time 15 http://localhost:6060/metrics >/dev/null && curl -sf --connect-timeout 1 --max-time 2 --retry 2 --retry-delay 3 --retry-max-time 15 -X POST -H 'Content-Type: application/json' --data '{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"id\":1}' http://localhost:8545/ >/dev/null) || sh -c 'pkill -15 openethereum && (sleep 10; pkill -9 openethereum) ; return 1'"]
+      interval: 60s
+      timeout: 30s
+      start_period: 60s
+    volumes:
+      - ../data/openethereum/data:/root/data
+      - ../data/openethereum/password:/root/password
+      - ../data/openethereum/key:/root/data/keys/xdai/key
+      - type: bind
+        source: ../data/openethereum/openethereum-entrypoint.sh
+        target: /root/openethereum-entrypoint.sh
+    ports:
+      - "30304:30304"
+      - "30304:30304/udp"
+      - "127.0.0.1:8535:8545"
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "10"
+  node:
+    image: sigp/lighthouse:latest-modern
+    hostname: node
+    restart: always
+    command: |
+      lighthouse beacon_node
+      --network gnosis
+      --checkpoint-sync-url https://rpc-gbc.gnosischain.com/
+      --discovery-port 12000
+      --port 13000
+      --eth1-endpoints $XDAI_RPC_URL
+      --datadir /home/.eth2/beaconchaindata
+      --http-address 0.0.0.0
+      --http
+      --enr-udp-port 12000
+      --target-peers $TARGET_PEERS
+      --metrics
+      --metrics-address 0.0.0.0
+      --metrics-allow-origin *
+      --debug-level $LOG_LEVEL
+    ports:
+      - '12000:12000/udp'
+      - '13000:13000'
+      - '127.0.0.1:5052:5052'
+    volumes:
+      - ./node_db:/home/.eth2/beaconchaindata
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"
+  node-private-slasher:
+    image: sigp/lighthouse:latest-modern
+    hostname: node
+    profiles: ["private-slasher"]
+    restart: always
+    command: |
+      lighthouse beacon_node
+      --network gnosis
+      --checkpoint-sync-url https://rpc-gbc.gnosischain.com/
+      --discovery-port 12000
+      --port 13000
+      --eth1-endpoints $XDAI_RPC_URL
+      --datadir /home/.eth2/beaconchaindata
+      --slasher-dir /home/.eth2/slasherdata
+      --http-address 0.0.0.0
+      --http
+      --target-peers $TARGET_PEERS
+      --metrics
+      --metrics-address 0.0.0.0
+      --metrics-allow-origin *
+      --debug-level $LOG_LEVEL
+      --slasher
+      --slasher-max-db-size 32
+    ports:
+      - '12000:12000/udp'
+      - '13000:13000'
+    volumes:
+      - ./node_db:/home/.eth2/beaconchaindata
+      - ./slasher_db:/home/.eth2/slasherdata
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"
+  node-public-slasher:
+    image: sigp/lighthouse:latest-modern
+    hostname: node
+    profiles: ["public-slasher"]
+    restart: always
+    command: |
+      lighthouse beacon_node
+      --network gnosis
+      --checkpoint-sync-url https://rpc-gbc.gnosischain.com/
+      --discovery-port 12000
+      --port 13000
+      --eth1-endpoints $XDAI_RPC_URL
+      --datadir /home/.eth2/beaconchaindata
+      --slasher-dir /home/.eth2/slasherdata
+      --http-address 0.0.0.0
+      --http
+      --target-peers $TARGET_PEERS
+      --metrics
+      --metrics-address 0.0.0.0
+      --metrics-allow-origin *
+      --debug-level $LOG_LEVEL
+      --slasher
+      --slasher-max-db-size 32
+      --slasher-broadcast
+    ports:
+      - '12000:12000/udp'
+      - '13000:13000'
+    volumes:
+      - ./node_db:/home/.eth2/beaconchaindata
+      - ./slasher_db:/home/.eth2/slasherdata
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"
+  validator-import:
+    image: sigp/lighthouse:latest-modern
+    profiles: ["validator-import"]
+    command: |
+      lighthouse account_manager validator import
+      --network gnosis
+      --password-file /root/sbc/keys/keystore_password.txt
+      --reuse-password
+      --directory /root/sbc/keys/validator_keys
+      --datadir /root/sbc
+    volumes:
+      - ./keys:/root/sbc/keys
+      - ./validators:/root/sbc/validators
+  validator:
+    image: sigp/lighthouse:latest-modern
+    hostname: validator
+    restart: always
+    depends_on:
+      - node
+    command: |
+      lighthouse validator_client
+      --network gnosis
+      --enable-doppelganger-protection
+      --validators-dir /root/sbc/validators
+      --beacon-nodes http://node:5052
+      --graffiti-file /root/sbc/config/graffiti.yml
+      --metrics
+      --metrics-address 0.0.0.0
+      --metrics-allow-origin *
+      --metrics-port 5064
+    ports:
+      - "127.0.0.1:5064:5064"
+    volumes:
+      - ./config:/root/sbc/config
+      - ./validators:/root/sbc/validators
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"
+  validator-import-slashing-protection:
+    image: sigp/lighthouse:latest-modern
+    profiles: ["validator-import-slashing-protection"]
+    command: |
+      lighthouse account validator slashing-protection import
+      --network gnosis
+      --datadir /root/sbc
+      /root/sbc/config/slashing_protection.json
+    volumes:
+      - ./config:/root/sbc/config
+      - ./validators:/root/sbc/validators
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"
+  validator-export-slashing-protection:
+    image: sigp/lighthouse:latest-modern
+    profiles: ["validator-export-slashing-protection"]
+    command: |
+      lighthouse account validator slashing-protection export
+      --network gnosis
+      --datadir /root/sbc
+      /root/sbc/config/slashing_protection.json
+    volumes:
+      - ./config:/root/sbc/config
+      - ./validators:/root/sbc/validators
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"
+  prometheus:
+    image: prom/prometheus:latest
+    profiles: ["prometheus"]
+    restart: always
+    depends_on:
+      - node
+      - validator
+    command: |
+      --web.listen-address=0.0.0.0:9090
+      --config.file=/etc/prometheus/prometheus.yml
+      --storage.tsdb.path=/prometheus
+      --web.console.libraries=/usr/share/prometheus/console_libraries
+      --web.console.templates=/usr/share/prometheus/consoles
+    ports:
+      - '9090:9090'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus-data:/prometheus
+      - type: bind
+        source: ./prometheus/scrape-targets
+        target: /prometheus/targets
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"
+networks:
+  default:
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: 1450
