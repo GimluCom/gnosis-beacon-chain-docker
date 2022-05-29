@@ -6,4 +6,4 @@ do
     break
   fi
 done
-/bin/openethereum --nat="extip:$EXT_IP" "$@"
+sh /bin/openethereum --nat="extip:$EXT_IP" "$@"

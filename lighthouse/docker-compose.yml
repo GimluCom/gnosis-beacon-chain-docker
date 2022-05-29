@@ -1,4 +1,4 @@
-version: '3.8'
+version: '3.7'
 services:
   nethermind:
     container_name: nethermind
@@ -26,7 +26,7 @@ services:
     image: openethereum/openethereum:latest
     profiles: ["openethereum", "oe-backup"]
     user: root
-    entrypoint: ["/root/openethereum-entrypoint.sh"]
+    entrypoint: ["/root/openethereum-ext/openethereum-entrypoint.sh"]
     command:
       --chain=xdai
       --base-path=/root/data
@@ -49,9 +49,7 @@ services:
       - ../data/openethereum/data:/root/data
       - ../data/openethereum/password:/root/password
       - ../data/openethereum/key:/root/data/keys/xdai/key
-      - type: bind
-        source: ../data/openethereum/openethereum-entrypoint.sh
-        target: /root/openethereum-entrypoint.sh
+      - ../data/openethereum:/root/openethereum-ext
     ports:
       - "30304:30304"
       - "30304:30304/udp"

@@ -6,4 +6,4 @@ do
     break
   fi
 done
-/app/cmd/beacon-chain/beacon-chain --p2p-host-ip $EXT_IP "$@"
+sh /app/cmd/beacon-chain/beacon-chain --p2p-host-ip $EXT_IP "$@"

@@ -45,10 +45,17 @@ Gnosis Beacon Chain: Prysm, Lighthouse
    sudo docker-compose up -d
    ```
 
-View the logs (exit using ctrl+c):
-```bash
-sudo docker-compose logs -f --tail 500
-```
+   If you want to view the logs (exit using ctrl+c):
+   ```bash
+   sudo docker-compose logs -f --tail 500
+   ```
+
+
+## Validator deposit
+
+To perform the validator deposit, please follow the official instructions at https://docs.gnosischain.com/validator-info/validator-deposits <br>
+This should be done after your node is set up and running.
+
 
 ## Advanced options
 
@@ -70,33 +77,6 @@ sudo docker-compose --profile oe-backup --profile private-slasher up -d
 ```
 
 
+## Disclaimer
 
-`$ docker-compose up`
-
-A `.lighthouse` directory will be created in the repository root which contains
-the validator keys, beacon node database and other Lighthouse files.
-
-
-## Validator deposit
-
-1. Generate validator keys
-
-```bash
-
-```
-
-
-## Configuration
-
-The docker-compose file requires that a `.env` file be present in this
-directory. The `default.env` file provides a template and can be copied `.env`:
-
-```bash
-$ cp default.env .env
-```
-
-Failure to create an `.env` file will result in the following error:
-
-```
-ERROR: Couldn't find env file: /home/karlm/lighthouse-docker/.env
-```
+Some files originate from repositories at [github.com/gnosischain](https://github.com/gnosischain)
